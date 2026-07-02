@@ -1,0 +1,16 @@
+[target.thumbv7m-none-eabi]
+runner = "probe-rs run --chip STM32F103C8"
+# APM32F103C8 寄存器兼容，用 ST 的芯片名探测即可；如有 APM32 专用调试器配置可改。
+
+rustflags = [
+  "-C", "link-arg=-Tlink.x",
+  "-C", "link-arg=--gc-sections",
+  # defmt
+  "--cfg", "addressable_packet_payload",
+]
+
+[build]
+target = "thumbv7m-none-eabi"
+
+[env]
+DEFMT_LOG = "debug"

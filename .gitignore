@@ -1,0 +1,21 @@
+# Rust 编译产物
+/target
+debug/
+release/
+
+# defmt / probe-rs 临时
+*.elf
+*.bin
+*.hex
+*.map
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
