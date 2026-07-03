@@ -1,9 +1,11 @@
-//! 游戏手柄业务逻辑 —— 对照 `Customer/gamepad.c`。
+//! Gamepad business logic — mirrors `Customer/gamepad.c`.
 //!
-//! 1. ADC 采样 10 次 X / 10 次 Y 求均值（原 `AD_DATA[20]` DMA 循环的等价物）。
-//! 2. `map()` 映射到 0..=255，clamp 到 [Xmin+10, Xmax-10]。
-//! 3. 按键扫描（低电平有效），按真值表算 Hat 值。
-//! 4. 仅在报告变化时 signal 给 USB writer 任务（原 gamepad.c:235 的 memcmp）。
+//! 1. ADC samples 10× X / 10× Y and averages (equivalent to the original
+//!    `AD_DATA[20]` DMA circular buffer).
+//! 2. `map()` to 0..=255, clamped to [Xmin+10, Xmax-10].
+//! 3. Button scan (active low), compute Hat value via truth table.
+//! 4. Signal the USB writer task only when the report changes
+//!    (mirrors the memcmp in gamepad.c:235).
 
 use embassy_stm32::adc::Adc;
 use embassy_stm32::gpio::{Input, Pull};
@@ -13,13 +15,13 @@ use embassy_time::Timer;
 
 use crate::usb::{GamepadReport, REPORT_TX};
 
-// 原 gamepad.h:65-68
+// Original gamepad.h:65-68
 const AD_XMIN: i32 = 0;
 const AD_XMAX: i32 = 0xfc1;   // 4033
 const AD_YMIN: i32 = 0;
 const AD_YMAX: i32 = 0xfc1;
 
-// 原 gamepad.h:56-63
+// Original gamepad.h:56-63
 const HAT_N: u8 = 0x00;
 const HAT_1: u8 = 0x04;
 const HAT_2: u8 = 0x08;
@@ -30,7 +32,7 @@ const HAT_6: u8 = 0x18;
 const HAT_7: u8 = 0x1C;
 const HAT_8: u8 = 0x20;
 
-/// 原 gamepad.c:128
+/// Original gamepad.c:128
 fn map(x: i32, in_min: i32, in_max: i32, out_min: i32, out_max: i32) -> i32 {
     (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
 }
@@ -40,9 +42,11 @@ fn pressed(p: &Input<'static>) -> bool {
     p.is_low()
 }
 
-/// 4 个方向键 → Hat 值，完全照搬 gamepad.c:170-208 的真值表。
+/// 4 direction buttons → Hat value, copied verbatim from gamepad.c:170-208.
 ///
-/// `(UP, DN, LF, RG)` 真值表，1 = 按下。原代码逻辑混乱，本文件 1:1 复刻不修正。
+/// `(UP, DN, LF, RG)` truth table, 1 = pressed. The original code's logic is
+/// inconsistent (button combos don't match hat directions); this file reproduces
+/// it 1:1 without correction.
 fn hat_lookup(up: bool, dn: bool, lf: bool, rg: bool) -> u8 {
     match (up, dn, lf, rg) {
         (true,  true,  true,  false) => HAT_7,
@@ -61,7 +65,8 @@ fn hat_lookup(up: bool, dn: bool, lf: bool, rg: bool) -> u8 {
     }
 }
 
-/// gamepad 任务。参数为具体 peripheral 类型（embassy-stm32 0.3 的 `Peri<'static, _>`）。
+/// Gamepad task. Parameters are concrete peripheral types
+/// (embassy-stm32 0.3 `Peri<'static, _>`).
 #[embassy_executor::task]
 pub async fn gamepad_task(
     mut adc: Adc<'static, ADC1>,
@@ -76,12 +81,12 @@ pub async fn gamepad_task(
     st:  Peri<'static, PB3>,
     tb:  Peri<'static, PA15>,
 ) {
-    // PA1/PA2 已被 AdcChannel impl（无需手动 set_as_analog，read() 会调 setup()）。
-    // 但需把它们从默认 GPIO 模式释放给 ADC —— embassy-stm32 的 impl_adc_pin! 在
-    // setup() 里会调 set_as_analog。我们只需保证这些 pin 不被别的驱动占用即可。
-    // 这里 pin_x/pin_y 不需要构造 Input，直接作为 channel 传给 read()。
+    // PA1/PA2 are AdcChannel impls (no manual set_as_analog needed; read()
+    // calls setup() internally). impl_adc_pin! in embassy-stm32 calls
+    // set_as_analog() inside setup(). Just ensure these pins aren't claimed
+    // by another driver. pin_x/pin_y are passed directly to read() as channels.
 
-    // 按键：上拉输入（原 gpio.c:60/68）
+    // Buttons: pull-up inputs (original gpio.c:60/68)
     let up = Input::new(up, Pull::Up);
     let dn = Input::new(dn, Pull::Up);
     let lf = Input::new(lf, Pull::Up);
@@ -94,7 +99,8 @@ pub async fn gamepad_task(
     let mut last = GamepadReport::NEUTRAL;
 
     loop {
-        // —— ADC 均值：原 AD_DATA[20] 是 X/Y 交替 10 组，等价于 10 次均值
+        // —— ADC averaging: original AD_DATA[20] interleaves X/Y in 10 pairs,
+        //    equivalent to averaging 10 samples each
         let (mut sx, mut sy) = (0u32, 0u32);
         for _ in 0..10 {
             sx += adc.read(&mut pin_x).await as u32;
@@ -106,15 +112,15 @@ pub async fn gamepad_task(
         let xt = xt.clamp(AD_XMIN + 10, AD_XMAX - 10);
         let yt = yt.clamp(AD_YMIN + 10, AD_YMAX - 10);
 
-        // 原 gamepad.c:166-167: Buf[1]=map(X), Buf[0]=map(Y)
+        // Original gamepad.c:166-167: Buf[1]=map(X), Buf[0]=map(Y)
         let x = map(xt, AD_XMIN + 10, AD_XMAX - 10, 0, 255) as u8;
         let y = map(yt, AD_YMIN + 10, AD_YMAX - 10, 0, 255) as u8;
 
-        // —— 按键扫描（原 gamepad.c:170+）
+        // —— Button scan (original gamepad.c:170+)
         let (u, d, l, r) = (pressed(&up), pressed(&dn), pressed(&lf), pressed(&rg));
         let hat = hat_lookup(u, d, l, r);
 
-        // Buf[5] bit0..3 = ST|MD|BK|TB（原 gamepad.c:210-233）
+        // Buf[5] bit0..3 = ST|MD|BK|TB (original gamepad.c:210-233)
         let buttons: u16 = (pressed(&st) as u16) << 0
                          | (pressed(&md) as u16) << 1
                          | (pressed(&bk) as u16) << 2
@@ -122,15 +128,15 @@ pub async fn gamepad_task(
 
         let now = GamepadReport { x, y, rx: 128, ry: 128, z: 128, buttons, hat };
 
-        // 仅变化才上报（原 gamepad.c:235 memcmp）
+        // Only signal on change (original gamepad.c:235 memcmp)
         if now != last {
             REPORT_TX.signal(now);
             last = now;
         }
-        Timer::after_millis(5).await;   // 原 timer1 5ms
+        Timer::after_millis(5).await;   // original timer1 5ms
     }
 }
 
-// 抑制未使用警告
+// Suppress unused warnings
 #[allow(dead_code)]
 fn _unused() {}
