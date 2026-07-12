@@ -56,18 +56,29 @@ Debugger: ST-Link V2 over SWD. Adjust `--chip` in `.cargo/config.toml` if your p
 
 ## Status / TODO
 
-- [x] Project skeleton (Cargo.toml / memory.x / build.rs / .cargo/config.toml)
+**Done**
+- [x] Project skeleton, build, and toolchain setup
 - [x] USB HID class + descriptor copied byte-for-byte from original
-- [x] Gamepad business logic (ADC averaging + hat truth table + report-on-change)
-- [x] **First successful build** (embassy 0.3/0.5/0.7 API alignment complete)
-- [x] defmt 1.0 `#[defmt::panic_handler]` setup
-- [x] Toolchain: rustup stable MSVC + thumbv7m-none-eabi + probe-rs 0.31.0 + cargo-binutils
+- [x] Gamepad logic (ADC averaging + hat table + report-on-change)
 - [x] Size confirmed: Flash 28.7 KB / 64 KB (45%), RAM 4.7 KB / 20 KB (24%)
-- [ ] **WS2812B DMA write to CCR:** `ws2812.rs::write_pixel_blocking` is currently a blocking placeholder with non-compliant timing; needs DMA1_CH6 to stream 24 CCR values continuously
-- [ ] **PA15 / PB3 / PB4 JTAG pins:** verify whether embassy-stm32 automatically disables JTAG; pending hardware test
-- [ ] **First hardware flash test:** ST-Link via SWD, `cargo run --release`, verify Windows recognizes it as a gamepad
-- [ ] Eg10_Xinput (vendor-specific class) — not yet implemented, separate task
+
+**Pending**
+- [ ] **First hardware flash test** (ST-Link SWD) and verify Windows gamepad recognition
+- [ ] **WS2812B DMA:** `ws2812.rs` is a blocking placeholder with non-compliant timing; needs DMA to stream 24 CCR values
+- [ ] **JTAG pins** (PA15/PB3/PB4): confirm embassy-stm32 disables JTAG
+- [ ] **Eg10_Xinput** vendor-specific class (separate task)
+
+**Improvements (inspired by [GP2040-CE](https://github.com/OpenStickCommunity/GP2040-CE))**
+
+GP2040-CE targets the RP2040 (264 KB RAM / PIO / dual-role USB); this board's F103-class MCU can't host its full feature set (web configurator, all-console protocols, add-ons). The transferable ideas below are scoped to the hardware:
+
+- [ ] **SOCD cleaning** (Up-priority / Neutral / Second-input) + correct hat mapping — replaces the buggy `hat_lookup`
+- [ ] **Button debounce** and 1000 Hz polling (`poll_ms: 1`, matching GP2040-CE latency)
+- [ ] **Turbo / button remap / D-pad↔analog toggle**
+- [ ] **ADC continuous DMA** instead of serial 10-sample averaging
+- [ ] **Config persistence** (flash page) for mode / SOCD / turbo settings
+- [ ] **Unit tests** for `map` / `hat_lookup` / SOCD (logic runs on host)
 
 ## Known "Original Bug" (intentionally preserved)
 
-`gamepad.rs::hat_lookup` is a 1:1 copy of the truth table in the original `gamepad.c:170-208`. The mapping between button combinations and hat directions is inconsistent in the original code (button combos don't match their hat direction labels). This is preserved deliberately for behavior parity; for correct directional response, rewrite the table.
+`gamepad.rs::hat_lookup` is a 1:1 copy of the truth table in the original `gamepad.c:170-208`. The mapping between button combinations and hat directions is inconsistent in the original code. It is preserved for behavior parity only; the SOCD + hat rewrite (above) supersedes it.
