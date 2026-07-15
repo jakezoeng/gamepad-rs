@@ -88,8 +88,6 @@ Scope: a USB HID gamepad is a default-class PDE (self-assessment, Module A); not
 - [ ] **RDP Level 2 lockdown** — production units set RDP2 to block Flash read/erase via SWD and disable debug access. **Warning:** irreversible; must be the last step before shipping. (#14)
 - [ ] **SBOM generation** — `cargo install cargo-cyclonedx` → `cargo cyclonedx -f json` in CI; required input for CRA technical documentation. (#15)
 - [ ] **SWD disable on production** — disable SWD after provisioning (covered by RDP2, but verify no leftover debug surface). (#16)
-- [ ] **Vulnerability disclosure process** — publish a security policy (`SECURITY.md`) with a reporting channel; CRA requires 24h advisory / 72h report / 15-day patch SLA. (#17)
-- [ ] **Risk assessment + technical documentation** — STRIDE/threat model for the USB attack surface, test report, declaration of conformity (Module A self-declaration). (#18)
 
 Out of scope on this hardware (would require Cortex-M33 + TrustZone-M, e.g. STM32L5/U5, APM32E5/L5): TF-M, hardware-backed Secure Boot, Secure Element, side-channel-resistant key store. Re-evaluate only if the product is reclassified into CRA Annex III high-risk (authentication device, child-safety, CII).
 
