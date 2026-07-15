@@ -79,6 +79,20 @@ GP2040-CE targets the RP2040 (264 KB RAM / PIO / dual-role USB); this board's F1
 - [ ] **Config persistence** (flash page) for mode / SOCD / turbo settings
 - [ ] **Unit tests** for `map` / `hat_lookup` / SOCD (logic runs on host)
 
+**CRA Compliance (Cyber Resilience Act, EU — enforceable from 2027-12)**
+
+Scope: a USB HID gamepad is a default-class PDE (self-assessment, Module A); not Annex III/IV. The APM32F103C8 lacks hardware Secure Boot, OTP key storage, crypto accelerator, and Armv8-M TrustZone, so TF-A / TF-M cannot run (see `Doc` for the architecture analysis). The following software-level measures are feasible on F103 and sufficient for the default-class self-declaration:
+
+- [ ] **Signed bootloader** — 8–16 KB Ed25519 verifier in Flash @ `0x08000000`; verifies App signature before jump. Public key embedded in bootloader; bootloader is then locked with RDP2 (permanent, non-downgradeable). (#12)
+- [ ] **USB DFU upgrade path** — expose a DFU class on `embassy-usb` so App firmware can be updated in the field over USB (CRA: "free security updates" for ≥5 years / product lifetime). Blocked by #12. (#13)
+- [ ] **RDP Level 2 lockdown** — production units set RDP2 to block Flash read/erase via SWD and disable debug access. **Warning:** irreversible; must be the last step before shipping. (#14)
+- [ ] **SBOM generation** — `cargo install cargo-cyclonedx` → `cargo cyclonedx -f json` in CI; required input for CRA technical documentation. (#15)
+- [ ] **SWD disable on production** — disable SWD after provisioning (covered by RDP2, but verify no leftover debug surface). (#16)
+- [ ] **Vulnerability disclosure process** — publish a security policy (`SECURITY.md`) with a reporting channel; CRA requires 24h advisory / 72h report / 15-day patch SLA. (#17)
+- [ ] **Risk assessment + technical documentation** — STRIDE/threat model for the USB attack surface, test report, declaration of conformity (Module A self-declaration). (#18)
+
+Out of scope on this hardware (would require Cortex-M33 + TrustZone-M, e.g. STM32L5/U5, APM32E5/L5): TF-M, hardware-backed Secure Boot, Secure Element, side-channel-resistant key store. Re-evaluate only if the product is reclassified into CRA Annex III high-risk (authentication device, child-safety, CII).
+
 ## Known "Original Bug" (intentionally preserved)
 
 `gamepad.rs::hat_lookup` is a 1:1 copy of the truth table in the original `gamepad.c:170-208`. The mapping between button combinations and hat directions is inconsistent in the original code. It is preserved for behavior parity only; the SOCD + hat rewrite (above) supersedes it.
